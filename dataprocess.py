@@ -9,6 +9,7 @@ from torch.utils.data.distributed import DistributedSampler
 import pandas as pd
 import random
 import bmtrain as bmt
+import torch
 
 
 from static_param import opt_version
@@ -69,8 +70,13 @@ def train_collate_fn(batch):
         token = "Question: " + mini_batch["question"] + "\nAnswer: " + mini_batch["rationale"] + "\n" + mini_batch["answer"]
         res.append(token)
 
-    res = tokenizer.batch_encode_plus(res, padding=True, return_tensors="pt").input_ids
-    return res[:, :-1], res[:, 1:]
+    res = tokenizer.batch_encode_plus(res, padding=True, return_tensors="pt")
+    length = res.input_ids.shape[-1]
+    input_tokens = res.input_ids.clone()
+    res.input_ids[res.attention_mask == 0] = -100
+    target = torch.ones_like(res.attention_mask, dtype=torch.long) * -100
+    target[:, :length - 1] = res.input_ids[:, 1:]
+    return input_tokens, target
 
 
 def get_dataloader():
@@ -80,16 +86,17 @@ def get_dataloader():
         corpus_path="/liuzyai04/tanghongjian/bmtOPT/dataset/grade_school_math_test.jsonl", batch_size=batch_size, world_size=bmt.world_size(), rank=bmt.rank(), shuffle=True, collate_fn=train_collate_fn
     )
 
-    train_wo_rat_dataset = DstributedDataset(
-        corpus_path="/liuzyai04/tanghongjian/bmtOPT/dataset/grade_school_math_train.jsonl", batch_size=batch_size, world_size=bmt.world_size(), rank=bmt.rank(), shuffle=True, collate_fn=train_collate_fn_wo_rat
-    )
+    # train_wo_rat_dataset = DstributedDataset(
+    #     corpus_path="/liuzyai04/tanghongjian/bmtOPT/dataset/grade_school_math_train.jsonl", batch_size=batch_size, world_size=bmt.world_size(), rank=bmt.rank(), shuffle=True, collate_fn=train_collate_fn_wo_rat
+    # )
 
-    test_dataset = DstributedDataset(
-        corpus_path="/liuzyai04/tanghongjian/bmtOPT/dataset/grade_school_math_test.jsonl", batch_size=1, world_size=bmt.world_size(), rank=bmt.rank(), shuffle=False, collate_fn=test_collate_fn
-    )
+    # test_dataset = DstributedDataset(
+    #     corpus_path="/liuzyai04/tanghongjian/bmtOPT/dataset/grade_school_math_test.jsonl", batch_size=1, world_size=bmt.world_size(), rank=bmt.rank(), shuffle=False, collate_fn=test_collate_fn
+    # )
 
     # test_src = '/liuzyai04/tanghongjian/finetune_opt/dataset/our_new_gsm8k0.jsonl'
-    return train_dataset, train_wo_rat_dataset, test_dataset
+    # return train_dataset, train_wo_rat_dataset, test_dataset
+    return train_dataset
 
 
 class DstributedDataset:

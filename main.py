@@ -48,7 +48,7 @@ def infer(input_ids, opt_model, tokenizer):
 def train(model, train_set):
     from static_param import save_point_path
 
-    loss_func = torch.nn.CrossEntropyLoss(ignore_index=-100)
+    loss_func = bmt.loss.FusedCrossEntropy(ignore_index=-100)
     optimizer = bmt.optim.AdamOffloadOptimizer(model.parameters(), weight_decay=1e-2, scale=128)
     dataset_len = len(train_set)
 
@@ -127,8 +127,8 @@ def train(model, train_set):
                     avg_time_recorder.value
                 )
             )
-
-        bmt.save(model, f"{save_point_path}/checkpoint_epoch_{epoch}.pt")
+        if epoch % 4 == 0:
+            bmt.save(model, f"{save_point_path}/checkpoint_epoch_{epoch}.pt")
 
 
 def main():
@@ -144,7 +144,7 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(f"/liuzyai04/tanghongjian/opt/{opt_version}", use_fast=False)
 
     from dataprocess import get_dataloader
-    train_dataset, train_wo_rat_dataset, test_dataset = get_dataloader()
+    train_dataset = get_dataloader()
 
     train(opt_model, train_dataset)
 
@@ -157,7 +157,6 @@ def test():
     opt_model = OPTModel(opt_config, use_cache=True, dtype=torch.half)
     bmt.load(opt_model, load_point_path)
 
-    
     bmt.load(opt_model, f"/liuzyai04/tanghongjian/bmtOPT/bmtopt_weights/{opt_version}.pt")
 
     bmt.print_rank(torch.cuda.memory_summary())
@@ -166,7 +165,7 @@ def test():
 
     tokenizer = AutoTokenizer.from_pretrained(f"/liuzyai04/tanghongjian/opt/{opt_version}", use_fast=False)
     
-    token = 'Question: Natalia sold clips to 48 of her friends in April, and then she sold half as many clips in May. How many clips did Natalia sell altogether in April and May?\nAnswer'
+    token = 'Question: Natalia sold clips to 48 of her friends in April, and then she sold half as many clips in May. How many clips did Natalia sell altogether in April and May?'
     input_ids = tokenizer.encode(token, return_tensors="pt").cuda()
     generate_ids = greedy_generate(opt_model, input_ids, 200, True)
     output = tokenizer.decode(generate_ids[0], skip_special_tokens=True, clean_up_tokenization_spaces=True)
